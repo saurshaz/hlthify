@@ -127,85 +127,117 @@ def extract_text_from_pdf(contents):
     
 #     return data
 
-
 def parse_text_to_json(text):
-    lines = text.split("\n")
-    data = {}
-    current_section = None
-    section_content = []
-    
-    def process_line_with_colon(line):
-        # Handle cases where there might be multiple colons
-        try:
-            key, value = line.split(":", 1)
-            key = key.strip().lower().replace(" ", "_")
-            value = value.strip()
-            if not value:  # If value is empty, store as None
-                value = None
-            return key, value
-        except ValueError:
-            return None, line
+    # Initialize the result dictionary
+    result = {}
 
-    def store_section_content():
-        if current_section and section_content:
-            # Process accumulated content
-            section_data = {}
-            unstructured_content = []
-            
-            for content in section_content:
-                if ":" in content:
-                    key, value = process_line_with_colon(content)
-                    if key:
-                        section_data[key] = value
-                    else:
-                        unstructured_content.append(content)
-                else:
-                    unstructured_content.append(content)
-            
-            # Store both structured and unstructured content
-            if section_data:
-                data[current_section]["structured_data"] = section_data
-            if unstructured_content:
-                data[current_section]["unstructured_text"] = unstructured_content
+    # Split the text into sections based on headers
+    sections = re.split(r"\n\s*\n", text.strip())
 
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        # Check for section headers (all caps, might include numbers)
-        if line.isupper() or (any(c.isupper() for c in line) and all(c.isupper() or c.isdigit() or c in ' -/' for c in line)):
-            # Store previous section's content before starting new section
-            store_section_content()
-            
-            # Start new section
-            current_section = line.lower().replace(" ", "_")
-            data[current_section] = {}
-            section_content = []
-            continue
-
-        # Accumulate content for current section
-        if current_section:
-            section_content.append(line)
+    for section in sections:
+        # Extract the section header (if any)
+        header_match = re.match(r"^([A-Z\s]+):", section)
+        if header_match:
+            header = header_match.group(1).strip().lower().replace(" ", "_")
+            result[header] = {}
+            current_dict = result[header]
         else:
-            # Handle content before any section is defined
+            current_dict = result
+
+        # Process key-value pairs in the section
+        for line in section.split("\n"):
             if ":" in line:
-                key, value = process_line_with_colon(line)
-                if key:
-                    data[key] = value
+                key, value = map(str.strip, line.split(":", 1))
+                key = key.lower().replace(" ", "_")
+                # Handle nested key-value pairs
+                if "(" in key and ")" in key:
+                    parent_key = re.sub(r"\(.*\)", "", key).strip()
+                    sub_key = re.search(r"\((.*)\)", key).group(1).strip().lower().replace(" ", "_")
+                    if parent_key not in current_dict:
+                        current_dict[parent_key] = {}
+                    current_dict[parent_key][sub_key] = value
                 else:
-                    if "general" not in data:
-                        data["general"] = {"unstructured_text": []}
-                    data["general"]["unstructured_text"].append(line)
-            else:
-                if "general" not in data:
-                    data["general"] = {"unstructured_text": []}
-                data["general"]["unstructured_text"].append(line)
+                    current_dict[key] = value
 
-    # Process the last section
-    store_section_content()
+    return result
+# def parse_text_to_json(text):
+#     lines = text.split("\n")
+#     data = {}
+#     current_section = None
+#     section_content = []
+    
+#     def process_line_with_colon(line):
+#         # Handle cases where there might be multiple colons
+#         try:
+#             key, value = line.split(":", 1)
+#             key = key.strip().lower().replace(" ", "_")
+#             value = value.strip()
+#             if not value:  # If value is empty, store as None
+#                 value = None
+#             return key, value
+#         except ValueError:
+#             return None, line
 
-    return data
+#     def store_section_content():
+#         if current_section and section_content:
+#             # Process accumulated content
+#             section_data = {}
+#             unstructured_content = []
+            
+#             for content in section_content:
+#                 if ":" in content:
+#                     key, value = process_line_with_colon(content)
+#                     if key:
+#                         section_data[key] = value
+#                     else:
+#                         unstructured_content.append(content)
+#                 else:
+#                     unstructured_content.append(content)
+            
+#             # Store both structured and unstructured content
+#             if section_data:
+#                 data[current_section]["structured_data"] = section_data
+#             if unstructured_content:
+#                 data[current_section]["unstructured_text"] = unstructured_content
+
+#     for line in lines:
+#         line = line.strip()
+#         if not line:
+#             continue
+
+#         # Check for section headers (all caps, might include numbers)
+#         if line.isupper() or (any(c.isupper() for c in line) and all(c.isupper() or c.isdigit() or c in ' -/' for c in line)):
+#             # Store previous section's content before starting new section
+#             store_section_content()
+            
+#             # Start new section
+#             current_section = line.lower().replace(" ", "_")
+#             data[current_section] = {}
+#             section_content = []
+#             continue
+
+#         # Accumulate content for current section
+#         if current_section:
+#             section_content.append(line)
+#         else:
+#             # Handle content before any section is defined
+#             if ":" in line:
+#                 key, value = process_line_with_colon(line)
+#                 if key:
+#                     data[key] = value
+#                 else:
+#                     if "general" not in data:
+#                         data["general"] = {"unstructured_text": []}
+#                     data["general"]["unstructured_text"].append(line)
+#             else:
+#                 if "general" not in data:
+#                     data["general"] = {"unstructured_text": []}
+#                 data["general"]["unstructured_text"].append(line)
+
+#     # Process the last section
+#     store_section_content()
+
+#     return data
 
 def clean_text(text):
     # Remove non-printable characters
@@ -230,28 +262,9 @@ async def generate_summary(text: str) -> Dict:
     }
     
     prompt = f"""
-    Please analyze this medical report and extract key information in a structured format.
-    Return only a JSON object with the following structure:
-    {{
-        "patient_info": {{
-            "name": "extracted or null",
-            "age": "extracted or null",
-            "gender": "extracted or null",
-            "medical_history": "key points"
-        }},
-        "test_results": [
-            {{
-                "test_name": "name",
-                "result": "value",
-                "unit": "unit",
-                "reference_range": "range"
-            }}
-        ],
-        "summary": "brief summary",
-        "recommendations": ["list", "of", "recommendations"]
-    }}
-
-    Medical Report Text:
+    Please analyze this document and extract key information in a structured format.
+    Return only a JSON object with an approptiate structure:. keep two nodes for summary and recommendations, apart from other data.
+    Document text:
     {text}
     """
 
