@@ -70,16 +70,20 @@ app.add_middleware(
 
 def extract_text_from_pdf(contents):
     """Extract text from all pages of a PDF using pdfplumber."""
-    with pdfplumber.open(io.BytesIO(contents)) as pdf:
-        text_pages = []
-        for page in pdf.pages:
-            text = page.extract_text()
-            if not text:  # If no text is found, use OCR
-                image = page.to_image(resolution=300).original
-                ocr_result = ocr.ocr(image, cls=True)
-                text = "\n".join([line[1][0] for line in ocr_result])
-            text_pages.append(text)
-    return "\n".join(text_pages)
+    try:
+        # Extract text using pdfplumber 
+        with pdfplumber.open(io.BytesIO(contents)) as pdf:
+            text_pages = []
+            for page in pdf.pages:
+                text = page.extract_text()
+                if not text:  # If no text is found, use OCR
+                    image = page.to_image(resolution=300).original
+                    ocr_result = ocr.ocr(image, cls=True)
+                    text = "\n".join([line[1][0] for line in ocr_result])
+                text_pages.append(text)
+        return "\n".join(text_pages)
+    except Exception as e:
+        return "\n".join([str(e)])
 
 # def parse_text_to_json(text):
 #     """
@@ -197,6 +201,13 @@ def parse_text_to_json(text):
 
     return data
 
+def clean_text(text):
+    # Remove non-printable characters
+    text = ''.join(char for char in text if char.isprintable())
+    # Remove multiple spaces
+    text = ' '.join(text.split())
+    return text
+
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):
     try:
@@ -207,8 +218,7 @@ async def upload_file(file: UploadFile = File(...)):
             if text_content is None:
                 return JSONResponse({"error": "Failed to extract text from PDF"}, status_code=400)
 
-            parsed_data = parse_text_to_json(text_content)
-            text_content = file_content.decode('utf-8')
+            parsed_data = parse_text_to_json(clean_text(text_content))
             return {"filename": file.filename, "status": "success", "data": parsed_data}
         else:
             return JSONResponse({"error": "File must be a PDF or text file"}, status_code=400)
@@ -221,10 +231,6 @@ async def upload_file(file: UploadFile = File(...)):
 @app.get("/upload")
 async def upload_form(request: Request):
     return templates.TemplateResponse("upload.html", {"request": request})
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
 
 @app.get("/health")
 async def health_check():
