@@ -196,7 +196,7 @@
                     const jsonTree = document.getElementById('jsonTree');
                     jsonViewer.classList.remove('hidden');
                     jsonTree.innerHTML = '';
-                    createJsonTree(result.data, jsonTree);
+                    createJsonTree(result.summary, jsonTree);
                 } else {
                     throw new Error(result.error || 'Upload failed');
                 }

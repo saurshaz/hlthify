@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Request
+from fastapi import FastAPI, UploadFile, File, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -6,8 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, List, Any
 import uvicorn
-import PyPDF2
+# import PyPDF2
 import io
+import httpx
+import os
 import json
 import re
 import logging
@@ -16,8 +18,12 @@ import pdfplumber
 from paddleocr import PaddleOCR
 from PIL import Image
 import io
+from dotenv import load_dotenv
 
 
+
+# Load environment variables
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -208,6 +214,85 @@ def clean_text(text):
     text = ' '.join(text.split())
     return text
 
+
+# OpenRouter API configuration
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+async def generate_summary(text: str) -> Dict:
+    """
+    Generate a standardized summary using OpenRouter AI
+    """
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "HTTP-Referer": "https://your-site.com",  # Replace with your site
+        "Content-Type": "application/json"
+    }
+    
+    prompt = f"""
+    Please analyze this medical report and extract key information in a structured format.
+    Return only a JSON object with the following structure:
+    {{
+        "patient_info": {{
+            "name": "extracted or null",
+            "age": "extracted or null",
+            "gender": "extracted or null",
+            "medical_history": "key points"
+        }},
+        "test_results": [
+            {{
+                "test_name": "name",
+                "result": "value",
+                "unit": "unit",
+                "reference_range": "range"
+            }}
+        ],
+        "summary": "brief summary",
+        "recommendations": ["list", "of", "recommendations"]
+    }}
+
+    Medical Report Text:
+    {text}
+    """
+
+    try:
+        # import hishel
+        # with hishel.CacheClient() as client:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                OPENROUTER_URL,
+                headers=headers,
+                json={
+                    "model":"cognitivecomputations/dolphin3.0-r1-mistral-24b:free",  # or another model
+                    "messages": [
+                        {"role": "system", "content": "You are a medical report analyzer that returns structured JSON only."},
+                        {"role": "user", "content": prompt}
+                    ]
+                }
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"OpenRouter API error: {response.text}")
+                raise HTTPException(status_code=500, detail="Error generating summary")
+            
+            # Extract the JSON from the response
+            result = response.json()
+            content = result['choices'][0]['message']['content']
+            
+            # Ensure we get valid JSON
+            try:
+                # import pdb;pdb.set_trace()
+                print(json.loads(content.replace('```json', "").replace('```', "")))
+                return json.loads(content.replace('```json', "").replace('```', ""))
+            except json.JSONDecodeError:
+                logger.error("Failed to parse AI response as JSON")
+                raise HTTPException(status_code=500, detail="Invalid response format")
+                
+    except Exception as e:
+        logger.error(f"Error calling OpenRouter API: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error generating summary")
+
+
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):
     try:
@@ -219,7 +304,8 @@ async def upload_file(file: UploadFile = File(...)):
                 return JSONResponse({"error": "Failed to extract text from PDF"}, status_code=400)
 
             parsed_data = parse_text_to_json(clean_text(text_content))
-            return {"filename": file.filename, "status": "success", "data": parsed_data}
+            summary = await generate_summary(parsed_data)
+            return JSONResponse({"filename": file.filename, "status": "success", "data": parsed_data, "summary": summary }, status_code=200)# Generate summary using AI
         else:
             return JSONResponse({"error": "File must be a PDF or text file"}, status_code=400)
     except Exception as e:
