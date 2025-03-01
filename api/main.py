@@ -35,38 +35,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class Demographics(BaseModel):
-    name: Optional[str] = Field(default=None)
-    age: Optional[int] = Field(default=None)
-    gender: Optional[str] = Field(default=None)
+# class Demographics(BaseModel):
+#     name: Optional[str] = Field(default=None)
+#     age: Optional[int] = Field(default=None)
+#     gender: Optional[str] = Field(default=None)
 
-class ClinicalDetails(BaseModel):
-    notes: List[str] = Field(default_factory=list)
+# class ClinicalDetails(BaseModel):
+#     notes: List[str] = Field(default_factory=list)
 
-class PatientInfo(BaseModel):
-    demographics: Demographics = Field(default_factory=Demographics)
-    clinical_details: ClinicalDetails = Field(default_factory=ClinicalDetails)
+# class PatientInfo(BaseModel):
+#     demographics: Demographics = Field(default_factory=Demographics)
+#     clinical_details: ClinicalDetails = Field(default_factory=ClinicalDetails)
 
-class HaematologyData(BaseModel):
-    complete_blood_count: Dict[str, Any] = Field(default_factory=dict)
-    notes: List[str] = Field(default_factory=list)
+# class HaematologyData(BaseModel):
+#     complete_blood_count: Dict[str, Any] = Field(default_factory=dict)
+#     notes: List[str] = Field(default_factory=list)
 
-class BiochemistryData(BaseModel):
-    metabolic_panel: Dict[str, Any] = Field(default_factory=dict)
-    notes: List[str] = Field(default_factory=list)
+# class BiochemistryData(BaseModel):
+#     metabolic_panel: Dict[str, Any] = Field(default_factory=dict)
+#     notes: List[str] = Field(default_factory=list)
 
-class LaboratoryResults(BaseModel):
-    haematology: HaematologyData = Field(default_factory=HaematologyData)
-    biochemistry: BiochemistryData = Field(default_factory=BiochemistryData)
+# class LaboratoryResults(BaseModel):
+#     haematology: HaematologyData = Field(default_factory=HaematologyData)
+#     biochemistry: BiochemistryData = Field(default_factory=BiochemistryData)
 
-class Summary(BaseModel):
-    interpretation: List[str] = Field(default_factory=list)
-    recommendations: List[str] = Field(default_factory=list)
+# class Summary(BaseModel):
+#     interpretation: List[str] = Field(default_factory=list)
+#     recommendations: List[str] = Field(default_factory=list)
 
-class StandardizedReport(BaseModel):
-    patient_info: PatientInfo = Field(default_factory=PatientInfo)
-    laboratory_results: LaboratoryResults = Field(default_factory=LaboratoryResults)
-    summary: Summary = Field(default_factory=Summary)
+# class StandardizedReport(BaseModel):
+#     patient_info: PatientInfo = Field(default_factory=PatientInfo)
+#     laboratory_results: LaboratoryResults = Field(default_factory=LaboratoryResults)
+#     summary: Summary = Field(default_factory=Summary)
 
 def extract_text_from_pdf(contents):
     """Extract text from all pages of a PDF using pdfplumber."""
@@ -81,38 +81,120 @@ def extract_text_from_pdf(contents):
             text_pages.append(text)
     return "\n".join(text_pages)
 
+# def parse_text_to_json(text):
+#     """
+#     Parse the extracted text into a structured JSON object.
+#     This function assumes a semi-structured format and extracts key-value pairs.
+#     Modify it based on your document's format.
+#     """
+#     lines = text.split("\n")
+#     data = {}
+#     current_section = None
+    
+#     for line in lines:
+#         line = line.strip()
+#         if not line:
+#             continue
+        
+#         # Identify section headers (e.g., "HAEMATOLOGY", "CLINICAL BIOCHEMISTRY")
+#         if line.isupper() and ":" not in line:
+#             current_section = line.lower().replace(" ", "_")
+#             data[current_section] = {}
+#             continue
+        
+#         # Extract key-value pairs
+#         if ":" in line:
+#             key, value = line.split(":", 1)
+#             key = key.strip().lower().replace(" ", "_")
+#             value = value.strip()
+            
+#             if current_section:
+#                 data[current_section][key] = value
+#             else:
+#                 data[key] = value
+#         else:
+#             data['extras'] = line
+    
+#     return data
+
+
 def parse_text_to_json(text):
-    """
-    Parse the extracted text into a structured JSON object.
-    This function assumes a semi-structured format and extracts key-value pairs.
-    Modify it based on your document's format.
-    """
     lines = text.split("\n")
     data = {}
     current_section = None
+    section_content = []
     
+    def process_line_with_colon(line):
+        # Handle cases where there might be multiple colons
+        try:
+            key, value = line.split(":", 1)
+            key = key.strip().lower().replace(" ", "_")
+            value = value.strip()
+            if not value:  # If value is empty, store as None
+                value = None
+            return key, value
+        except ValueError:
+            return None, line
+
+    def store_section_content():
+        if current_section and section_content:
+            # Process accumulated content
+            section_data = {}
+            unstructured_content = []
+            
+            for content in section_content:
+                if ":" in content:
+                    key, value = process_line_with_colon(content)
+                    if key:
+                        section_data[key] = value
+                    else:
+                        unstructured_content.append(content)
+                else:
+                    unstructured_content.append(content)
+            
+            # Store both structured and unstructured content
+            if section_data:
+                data[current_section]["structured_data"] = section_data
+            if unstructured_content:
+                data[current_section]["unstructured_text"] = unstructured_content
+
     for line in lines:
         line = line.strip()
         if not line:
             continue
-        
-        # Identify section headers (e.g., "HAEMATOLOGY", "CLINICAL BIOCHEMISTRY")
-        if line.isupper() and ":" not in line:
+
+        # Check for section headers (all caps, might include numbers)
+        if line.isupper() or (any(c.isupper() for c in line) and all(c.isupper() or c.isdigit() or c in ' -/' for c in line)):
+            # Store previous section's content before starting new section
+            store_section_content()
+            
+            # Start new section
             current_section = line.lower().replace(" ", "_")
             data[current_section] = {}
+            section_content = []
             continue
-        
-        # Extract key-value pairs
-        if ":" in line:
-            key, value = line.split(":", 1)
-            key = key.strip().lower().replace(" ", "_")
-            value = value.strip()
-            
-            if current_section:
-                data[current_section][key] = value
+
+        # Accumulate content for current section
+        if current_section:
+            section_content.append(line)
+        else:
+            # Handle content before any section is defined
+            if ":" in line:
+                key, value = process_line_with_colon(line)
+                if key:
+                    data[key] = value
+                else:
+                    if "general" not in data:
+                        data["general"] = {"unstructured_text": []}
+                    data["general"]["unstructured_text"].append(line)
             else:
-                data[key] = value
-    
+                if "general" not in data:
+                    data["general"] = {"unstructured_text": []}
+                data["general"]["unstructured_text"].append(line)
+
+    # Process the last section
+    store_section_content()
+
     return data
 
 @app.post("/upload/")
