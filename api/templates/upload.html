@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Upload</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .upload-progress {
+            width: 100%;
+            height: 4px;
+            background-color: #e5e7eb;
+            border-radius: 2px;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #3b82f6;
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+        .json-viewer {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .json-tree {
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        .json-tree .key {
+            color: #881391;
+        }
+        .json-tree .string {
+            color: #c41a16;
+        }
+        .json-tree .number {
+            color: #1c00cf;
+        }
+        .json-tree .boolean {
+            color: #1c00cf;
+        }
+        .json-tree .null {
+            color: #808080;
+        }
+        .json-tree details {
+            margin-left: 20px;
+        }
+        .json-tree summary {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto max-w-2xl p-4">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex flex-col items-center gap-6">
+                <div class="flex items-center justify-center w-full">
+                    <label for="file-upload" class="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                            <svg class="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                            </svg>
+                            <p class="mb-2 text-sm text-gray-500">
+                                <span class="font-semibold">Click to upload</span> or drag and drop
+                            </p>
+                            <p class="text-xs text-gray-500">Any file type allowed</p>
+                        </div>
+                        <input id="file-upload" type="file" class="hidden" />
+                    </label>
+                </div>
+
+                <div id="file-info" class="w-full hidden">
+                    <p class="text-sm text-gray-500 mb-2">Selected file: <span id="filename"></span></p>
+                    <button id="upload-button" class="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">
+                        Upload File
+                    </button>
+                </div>
+
+                <div id="progress-container" class="w-full hidden">
+                    <div class="upload-progress">
+                        <div id="progress-bar" class="progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div id="success-message" class="hidden w-full bg-green-50 p-4 rounded-md">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-green-800">Success!</h3>
+                            <div class="mt-2 text-sm text-green-700">
+                                Your file has been successfully uploaded.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="jsonViewer" class="json-viewer hidden">
+                    <h3>Parsed Data</h3>
+                    <div id="jsonTree" class="json-tree"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileUpload = document.getElementById('file-upload');
+        const fileInfo = document.getElementById('file-info');
+        const filename = document.getElementById('filename');
+        const uploadButton = document.getElementById('upload-button');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const successMessage = document.getElementById('success-message');
+
+        function createJsonTree(obj, container) {
+            for (let key in obj) {
+                const value = obj[key];
+                const details = document.createElement('details');
+                details.open = true;
+                const summary = document.createElement('summary');
+
+                if (Array.isArray(value) || typeof value === 'object') {
+                    summary.innerHTML = `<span class="key">${key}</span>`;
+                    details.appendChild(summary);
+
+                    if (Array.isArray(value)) {
+                        const arrayContainer = document.createElement('div');
+                        value.forEach((item, index) => {
+                            const itemElement = document.createElement('div');
+                            if (typeof item === 'object') {
+                                createJsonTree(item, itemElement);
+                            } else {
+                                itemElement.innerHTML = `<span class="string">${item}</span>`;
+                            }
+                            arrayContainer.appendChild(itemElement);
+                        });
+                        details.appendChild(arrayContainer);
+                    } else {
+                        createJsonTree(value, details);
+                    }
+                } else {
+                    let valueSpan = '';
+                    if (typeof value === 'string') {
+                        valueSpan = `<span class="string">"${value}"</span>`;
+                    } else if (typeof value === 'number') {
+                        valueSpan = `<span class="number">${value}</span>`;
+                    } else if (typeof value === 'boolean') {
+                        valueSpan = `<span class="boolean">${value}</span>`;
+                    } else if (value === null) {
+                        valueSpan = `<span class="null">null</span>`;
+                    }
+                    details.innerHTML = `<span class="key">${key}</span>: ${valueSpan}`;
+                }
+
+                container.appendChild(details);
+            }
+        }
+
+        fileUpload.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                filename.textContent = e.target.files[0].name;
+                fileInfo.classList.remove('hidden');
+                successMessage.classList.add('hidden');
+            }
+        });
+
+        uploadButton.addEventListener('click', async () => {
+            if (!fileUpload.files || !fileUpload.files[0]) return;
+            const formData = new FormData();
+            formData.append('file', fileUpload.files[0]);
+
+            try {
+                uploadButton.disabled = true;
+                uploadButton.textContent = 'Uploading...';
+                progressContainer.classList.remove('hidden');
+
+                const response = await fetch('/upload/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    successMessage.classList.remove('hidden');
+                    fileInfo.classList.add('hidden');
+                    fileUpload.value = '';
+
+                    const jsonViewer = document.getElementById('jsonViewer');
+                    const jsonTree = document.getElementById('jsonTree');
+                    jsonViewer.classList.remove('hidden');
+                    jsonTree.innerHTML = '';
+                    createJsonTree(result.data, jsonTree);
+                } else {
+                    throw new Error(result.error || 'Upload failed');
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                alert('Upload failed: ' + error.message);
+            } finally {
+                uploadButton.disabled = false;
+                uploadButton.textContent = 'Upload File';
+                progressContainer.classList.add('hidden');
+                progressBar.style.width = '0%';
+            }
+        });
+    </script>
+</body>
+</html>
