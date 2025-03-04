@@ -294,14 +294,29 @@ async def generate_summary(text: str) -> Dict:
             
             # Ensure we get valid JSON
             try:
+                pattern = r"<think>([^<]*)<\/think>.*```json([^`]*)```"
+
+                # Search for the pattern in the input text
+                match = re.search(pattern, content, re.DOTALL)
+                
                 # import pdb;pdb.set_trace()
-                print(json.loads(content.replace('```json', "").replace('```', "")))
-                return json.loads(content.replace('```json', "").replace('```', ""))
+                if match:
+                    # Extract the JSON string from the matched group
+                    json_str = match.group(2)
+                    meta_str = match.group(1)
+                else:
+                    json_str = content
+
+                json_obj = json.loads(json_str)
+                json_obj['think'] = meta_str
+                print(json_obj)
+                return json_obj
             except json.JSONDecodeError:
                 logger.error("Failed to parse AI response as JSON")
                 raise HTTPException(status_code=500, detail="Invalid response format")
                 
     except Exception as e:
+        print(e)
         logger.error(f"Error calling OpenRouter API: {str(e)}")
         raise HTTPException(status_code=500, detail="Error generating summary")
 
