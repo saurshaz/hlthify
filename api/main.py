@@ -298,17 +298,20 @@ async def generate_summary(text: str) -> Dict:
 
                 # Search for the pattern in the input text
                 match = re.search(pattern, content, re.DOTALL)
-                
-                # import pdb;pdb.set_trace()
-                if match:
-                    # Extract the JSON string from the matched group
-                    json_str = match.group(2)
-                    meta_str = match.group(1)
-                else:
-                    json_str = content
+                if match is None:
+                    json_obj = {'obj': content}
+                else:    
+                    # import pdb;pdb.set_trace()
+                    if match:
+                        # Extract the JSON string from the matched group
+                        json_str = match.group(2)
+                        meta_str = match.group(1)
+                    else:
+                        json_str = content
 
-                json_obj = json.loads(json_str)
-                json_obj['think'] = meta_str
+                    # import pdb;pdb.set_trace()
+                    json_obj = json.loads(json_str)
+                    json_obj['think'] = meta_str
                 print(json_obj)
                 return json_obj
             except json.JSONDecodeError:
