@@ -18,6 +18,7 @@ import pdfplumber
 from paddleocr import PaddleOCR
 from PIL import Image
 import io
+from aai import generate_summary, generate_summary_gemini
 from dotenv import load_dotenv
 
 
@@ -35,44 +36,11 @@ templates = Jinja2Templates(directory="api/templates")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["http://localhost:8081"],  # Replace with your frontend URL
+    allow_credentials=True,  # Allow cookies/credentials
+    allow_methods=["GET", "POST", "PUT", "DELETE"],  # Allowed HTTP methods
+    allow_headers=["*"],  # Allowed headers
 )
-
-# class Demographics(BaseModel):
-#     name: Optional[str] = Field(default=None)
-#     age: Optional[int] = Field(default=None)
-#     gender: Optional[str] = Field(default=None)
-
-# class ClinicalDetails(BaseModel):
-#     notes: List[str] = Field(default_factory=list)
-
-# class PatientInfo(BaseModel):
-#     demographics: Demographics = Field(default_factory=Demographics)
-#     clinical_details: ClinicalDetails = Field(default_factory=ClinicalDetails)
-
-# class HaematologyData(BaseModel):
-#     complete_blood_count: Dict[str, Any] = Field(default_factory=dict)
-#     notes: List[str] = Field(default_factory=list)
-
-# class BiochemistryData(BaseModel):
-#     metabolic_panel: Dict[str, Any] = Field(default_factory=dict)
-#     notes: List[str] = Field(default_factory=list)
-
-# class LaboratoryResults(BaseModel):
-#     haematology: HaematologyData = Field(default_factory=HaematologyData)
-#     biochemistry: BiochemistryData = Field(default_factory=BiochemistryData)
-
-# class Summary(BaseModel):
-#     interpretation: List[str] = Field(default_factory=list)
-#     recommendations: List[str] = Field(default_factory=list)
-
-# class StandardizedReport(BaseModel):
-#     patient_info: PatientInfo = Field(default_factory=PatientInfo)
-#     laboratory_results: LaboratoryResults = Field(default_factory=LaboratoryResults)
-#     summary: Summary = Field(default_factory=Summary)
 
 def extract_text_from_pdf(contents):
     """Extract text from all pages of a PDF using pdfplumber."""
@@ -90,42 +58,6 @@ def extract_text_from_pdf(contents):
         return "\n".join(text_pages)
     except Exception as e:
         return "\n".join([str(e)])
-
-# def parse_text_to_json(text):
-#     """
-#     Parse the extracted text into a structured JSON object.
-#     This function assumes a semi-structured format and extracts key-value pairs.
-#     Modify it based on your document's format.
-#     """
-#     lines = text.split("\n")
-#     data = {}
-#     current_section = None
-    
-#     for line in lines:
-#         line = line.strip()
-#         if not line:
-#             continue
-        
-#         # Identify section headers (e.g., "HAEMATOLOGY", "CLINICAL BIOCHEMISTRY")
-#         if line.isupper() and ":" not in line:
-#             current_section = line.lower().replace(" ", "_")
-#             data[current_section] = {}
-#             continue
-        
-#         # Extract key-value pairs
-#         if ":" in line:
-#             key, value = line.split(":", 1)
-#             key = key.strip().lower().replace(" ", "_")
-#             value = value.strip()
-            
-#             if current_section:
-#                 data[current_section][key] = value
-#             else:
-#                 data[key] = value
-#         else:
-#             data['extras'] = line
-    
-#     return data
 
 def parse_text_to_json(text):
     # Initialize the result dictionary
@@ -160,84 +92,6 @@ def parse_text_to_json(text):
                     current_dict[key] = value
 
     return result
-# def parse_text_to_json(text):
-#     lines = text.split("\n")
-#     data = {}
-#     current_section = None
-#     section_content = []
-    
-#     def process_line_with_colon(line):
-#         # Handle cases where there might be multiple colons
-#         try:
-#             key, value = line.split(":", 1)
-#             key = key.strip().lower().replace(" ", "_")
-#             value = value.strip()
-#             if not value:  # If value is empty, store as None
-#                 value = None
-#             return key, value
-#         except ValueError:
-#             return None, line
-
-#     def store_section_content():
-#         if current_section and section_content:
-#             # Process accumulated content
-#             section_data = {}
-#             unstructured_content = []
-            
-#             for content in section_content:
-#                 if ":" in content:
-#                     key, value = process_line_with_colon(content)
-#                     if key:
-#                         section_data[key] = value
-#                     else:
-#                         unstructured_content.append(content)
-#                 else:
-#                     unstructured_content.append(content)
-            
-#             # Store both structured and unstructured content
-#             if section_data:
-#                 data[current_section]["structured_data"] = section_data
-#             if unstructured_content:
-#                 data[current_section]["unstructured_text"] = unstructured_content
-
-#     for line in lines:
-#         line = line.strip()
-#         if not line:
-#             continue
-
-#         # Check for section headers (all caps, might include numbers)
-#         if line.isupper() or (any(c.isupper() for c in line) and all(c.isupper() or c.isdigit() or c in ' -/' for c in line)):
-#             # Store previous section's content before starting new section
-#             store_section_content()
-            
-#             # Start new section
-#             current_section = line.lower().replace(" ", "_")
-#             data[current_section] = {}
-#             section_content = []
-#             continue
-
-#         # Accumulate content for current section
-#         if current_section:
-#             section_content.append(line)
-#         else:
-#             # Handle content before any section is defined
-#             if ":" in line:
-#                 key, value = process_line_with_colon(line)
-#                 if key:
-#                     data[key] = value
-#                 else:
-#                     if "general" not in data:
-#                         data["general"] = {"unstructured_text": []}
-#                     data["general"]["unstructured_text"].append(line)
-#             else:
-#                 if "general" not in data:
-#                     data["general"] = {"unstructured_text": []}
-#                 data["general"]["unstructured_text"].append(line)
-
-#     # Process the last section
-#     store_section_content()
-
-#     return data
 
 def clean_text(text):
     # Remove non-printable characters
@@ -247,86 +101,14 @@ def clean_text(text):
     return text
 
 
-# OpenRouter API configuration
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-async def generate_summary(text: str) -> Dict:
-    """
-    Generate a standardized summary using OpenRouter AI
-    """
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "HTTP-Referer": "https://your-site.com",  # Replace with your site
-        "Content-Type": "application/json"
-    }
-    
-    prompt = f"""
-    Please analyze this document and extract key information in a structured format.
-    Return only a JSON object with an approptiate structure:. keep two nodes for summary and recommendations, apart from other data.
-    Document text:
-    {text}
-    """
-
-    try:
-        # import hishel
-        # with hishel.CacheClient() as client:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                OPENROUTER_URL,
-                headers=headers,
-                json={
-                    "model":"cognitivecomputations/dolphin3.0-r1-mistral-24b:free",  # or another model
-                    "messages": [
-                        {"role": "system", "content": "You are a medical report analyzer that returns structured JSON only."},
-                        {"role": "user", "content": prompt}
-                    ]
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"OpenRouter API error: {response.text}")
-                raise HTTPException(status_code=500, detail="Error generating summary")
-            
-            # Extract the JSON from the response
-            result = response.json()
-            content = result['choices'][0]['message']['content']
-            
-            # Ensure we get valid JSON
-            try:
-                pattern = r"<think>([^<]*)<\/think>.*```json([^`]*)```"
-
-                # Search for the pattern in the input text
-                match = re.search(pattern, content, re.DOTALL)
-                if match is None:
-                    json_obj = {'obj': content}
-                else:    
-                    # import pdb;pdb.set_trace()
-                    if match:
-                        # Extract the JSON string from the matched group
-                        json_str = match.group(2)
-                        meta_str = match.group(1)
-                    else:
-                        json_str = content
-
-                    # import pdb;pdb.set_trace()
-                    json_obj = json.loads(json_str)
-                    json_obj['think'] = meta_str
-                print(json_obj)
-                return json_obj
-            except json.JSONDecodeError:
-                logger.error("Failed to parse AI response as JSON")
-                raise HTTPException(status_code=500, detail="Invalid response format")
-                
-    except Exception as e:
-        print(e)
-        logger.error(f"Error calling OpenRouter API: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error generating summary")
-
 
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):
+    # import pdb;pdb.set_trace
+    # print(f"Uploaded file: {file.filename}")
+    # return {"message": "File uploaded successfully", "filename": file.filename}
     try:
+        logger.info('called /upload')
         file_content = await file.read()
 
         if file.filename.lower().endswith('.pdf'):
@@ -335,6 +117,8 @@ async def upload_file(file: UploadFile = File(...)):
                 return JSONResponse({"error": "Failed to extract text from PDF"}, status_code=400)
 
             parsed_data = parse_text_to_json(clean_text(text_content))
+            # summary = await generate_summary_gemini(parsed_data)
+
             summary = await generate_summary(parsed_data)
             return JSONResponse({"filename": file.filename, "status": "success", "data": parsed_data, "summary": summary }, status_code=200)# Generate summary using AI
         else:
@@ -345,7 +129,7 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
-@app.get("/upload")
+@app.get("/")
 async def upload_form(request: Request):
     return templates.TemplateResponse("upload.html", {"request": request})
 
